@@ -147,7 +147,6 @@ DASHBOARD_HTML = """
         .stat-failed .stat-number { color: #f85149; }
         .stat-total .stat-number { color: #58a6ff; }
         .stat-targets .stat-number { color: #f0883e; }
-        .results-section { grid-column: 1 / -1; }
         table { width: 100%; border-collapse: collapse; }
         th {
             text-align: left;
@@ -242,11 +241,11 @@ DASHBOARD_HTML = """
                     </div>
                     <div class="form-group">
                         <label>Username(s) - one per line</label>
-                        <textarea id="usernames" placeholder="admin&#10;root&#10;user">admin</textarea>
+                        <textarea id="usernames" placeholder="admin\nroot\nuser">admin</textarea>
                     </div>
                     <div class="form-group">
                         <label>Passwords - one per line (empty = default wordlist)</label>
-                        <textarea id="passwords" placeholder="password&#10;admin123&#10;(leave empty for default wordlist)"></textarea>
+                        <textarea id="passwords" placeholder="password\nadmin123"></textarea>
                     </div>
                     <div class="form-row">
                         <div class="form-group">
@@ -286,39 +285,37 @@ DASHBOARD_HTML = """
         </div>
     </div>
 <script>
-    let pollingInterval = null;
-    let totalScans = 0;
+    var pollingInterval = null;
+    var totalScans = 0;
 
     window.onload = function() { loadPlugins(); loadHistory(); };
 
     async function loadPlugins() {
         try {
-            const res = await fetch('/api/plugins');
-            const plugins = await res.json();
-            const select = document.getElementById('protocol');
+            var res = await fetch('/api/plugins');
+            var plugins = await res.json();
+            var select = document.getElementById('protocol');
             select.innerHTML = '';
-            plugins.forEach(p => {
-                const opt = document.createElement('option');
-                opt.value = p.name;
-                opt.textContent = p.name + ' (port ' + p.default_port + ')';
+            for (var i = 0; i < plugins.length; i++) {
+                var opt = document.createElement('option');
+                opt.value = plugins[i].name;
+                opt.textContent = plugins[i].name + ' (port ' + plugins[i].default_port + ')';
                 select.appendChild(opt);
-            });
-            select.addEventListener('change', function() {
-                const selected = plugins.find(p => p.name === this.value);
-                if (selected) document.getElementById('port').placeholder = selected.default_port;
-            });
-        } catch(e) { console.error('Failed to load plugins:', e); }
+            }
+        } catch(e) {
+            console.error('Failed to load plugins:', e);
+        }
     }
 
     async function startScan() {
-        const target = document.getElementById('target').value.trim();
+        var target = document.getElementById('target').value.trim();
         if (!target) { alert('Enter a target host'); return; }
-        const protocol = document.getElementById('protocol').value;
-        const port = document.getElementById('port').value || '';
-        const usernames = document.getElementById('usernames').value.trim();
-        const passwords = document.getElementById('passwords').value.trim();
-        const threads = document.getElementById('threads').value || 10;
-        const stopOnSuccess = document.getElementById('stopOnSuccess').value === 'true';
+        var protocol = document.getElementById('protocol').value;
+        var port = document.getElementById('port').value || '';
+        var usernames = document.getElementById('usernames').value.trim();
+        var passwords = document.getElementById('passwords').value.trim();
+        var threads = document.getElementById('threads').value || 10;
+        var stopOnSuccess = document.getElementById('stopOnSuccess').value === 'true';
         if (!usernames) { alert('Enter at least one username'); return; }
 
         document.getElementById('btnScan').disabled = true;
@@ -332,30 +329,36 @@ DASHBOARD_HTML = """
         addLog('Starting scan against ' + target + '...', 'info');
 
         try {
-            const res = await fetch('/api/scan', {
+            var usernameList = usernames.split(String.fromCharCode(10)).filter(function(u) { return u.trim(); });
+            var passwordList = passwords ? passwords.split(String.fromCharCode(10)).filter(function(p) { return p.trim(); }) : [];
+
+            var res = await fetch('/api/scan', {
                 method: 'POST',
                 headers: {'Content-Type': 'application/json'},
                 body: JSON.stringify({
-                    target, protocol, port, threads: parseInt(threads),
-                    usernames: usernames.split('\n').filter(u => u.trim()),
-                    passwords: passwords ? passwords.split('\n').filter(p => p.trim()) : [],
-                    stop_on_success: stopOnSuccess,
+                    target: target,
+                    protocol: protocol,
+                    port: port,
+                    threads: parseInt(threads),
+                    usernames: usernameList,
+                    passwords: passwordList,
+                    stop_on_success: stopOnSuccess
                 })
             });
-            const data = await res.json();
+            var data = await res.json();
             if (data.error) { addLog('Error: ' + data.error, 'fail'); resetUI(); return; }
             addLog('Scan started - ID: ' + data.scan_id, 'info');
-            pollingInterval = setInterval(() => pollStatus(data.scan_id), 500);
+            pollingInterval = setInterval(function() { pollStatus(data.scan_id); }, 500);
         } catch(e) { addLog('Error: ' + e.message, 'fail'); resetUI(); }
     }
 
     async function pollStatus(scanId) {
         try {
-            const res = await fetch('/api/scan/' + scanId);
-            const data = await res.json();
-            const total = data.total || 1;
-            const done = data.completed || 0;
-            const pct = Math.round((done / total) * 100);
+            var res = await fetch('/api/scan/' + scanId);
+            var data = await res.json();
+            var total = data.total || 1;
+            var done = data.completed || 0;
+            var pct = Math.round((done / total) * 100);
             document.getElementById('progressFill').style.width = pct + '%';
             document.getElementById('progressText').textContent = done + ' / ' + total + ' (' + pct + '%)';
             document.getElementById('statTotal').textContent = done;
@@ -363,9 +366,12 @@ DASHBOARD_HTML = """
             document.getElementById('statFailed').textContent = (done - (data.successes || 0));
 
             if (data.new_results) {
-                data.new_results.forEach(r => {
-                    if (r.success) addLog('FOUND: ' + r.username + ':' + r.password + ' @ ' + r.host + ':' + r.port, 'success');
-                });
+                for (var i = 0; i < data.new_results.length; i++) {
+                    var r = data.new_results[i];
+                    if (r.success) {
+                        addLog('FOUND: ' + r.username + ':' + r.password + ' @ ' + r.host + ':' + r.port, 'success');
+                    }
+                }
             }
             if (data.status === 'completed') {
                 clearInterval(pollingInterval);
@@ -388,25 +394,27 @@ DASHBOARD_HTML = """
     }
 
     function renderResults(results) {
-        const area = document.getElementById('resultsArea');
+        var area = document.getElementById('resultsArea');
         if (!results || results.length === 0) {
             area.innerHTML = '<div class="empty-state"><div class="icon">&#128270;</div><p>No credentials found.</p></div>';
             return;
         }
-        let html = '<table><thead><tr><th>Host</th><th>Port</th><th>Protocol</th><th>Username</th><th>Password</th><th>Status</th></tr></thead><tbody>';
-        results.forEach(r => {
-            const badge = r.success ? '<span class="badge badge-success">SUCCESS</span>' : '<span class="badge badge-fail">FAILED</span>';
+        var html = '<table><thead><tr><th>Host</th><th>Port</th><th>Protocol</th><th>Username</th><th>Password</th><th>Status</th></tr></thead><tbody>';
+        for (var i = 0; i < results.length; i++) {
+            var r = results[i];
+            var badge = r.success ? '<span class="badge badge-success">SUCCESS</span>' : '<span class="badge badge-fail">FAILED</span>';
             html += '<tr><td>' + r.host + '</td><td>' + r.port + '</td><td>' + r.protocol + '</td><td>' + r.username + '</td><td>' + (r.success ? r.password : '***') + '</td><td>' + badge + '</td></tr>';
-        });
+        }
         html += '</tbody></table>';
         area.innerHTML = html;
     }
 
     function addLog(msg, type) {
-        const log = document.getElementById('liveLog');
-        const entry = document.createElement('div');
+        var log = document.getElementById('liveLog');
+        var entry = document.createElement('div');
         entry.className = 'log-entry log-' + type;
-        entry.textContent = '[' + new Date().toLocaleTimeString() + '] ' + msg;
+        var time = new Date().toLocaleTimeString();
+        entry.textContent = '[' + time + '] ' + msg;
         log.appendChild(entry);
         log.scrollTop = log.scrollHeight;
     }
@@ -421,14 +429,14 @@ DASHBOARD_HTML = """
 
     async function loadHistory() {
         try {
-            const res = await fetch('/api/history');
-            const data = await res.json();
+            var res = await fetch('/api/history');
+            var data = await res.json();
             if (data.length > 0) {
                 totalScans = data.length;
                 document.getElementById('statScans').textContent = totalScans;
-                const last = data[data.length - 1];
+                var last = data[data.length - 1];
                 if (last.results) {
-                    const successes = last.results.filter(r => r.success);
+                    var successes = last.results.filter(function(r) { return r.success; });
                     document.getElementById('statTotal').textContent = last.results.length;
                     document.getElementById('statSuccess').textContent = successes.length;
                     document.getElementById('statFailed').textContent = last.results.length - successes.length;
@@ -497,7 +505,7 @@ def api_start_scan():
         else:
             return jsonify({"error": "No passwords provided and default wordlist not found"}), 400
 
-    scan_id = f"scan_{int(time.time())}"
+    scan_id = "scan_" + str(int(time.time()))
     total_combos = len(usernames) * len(passwords)
 
     with scan_lock:
@@ -574,10 +582,10 @@ def api_history():
 
 def start_dashboard(port=5000):
     discover_plugins()
-    print(f"""
-    HYDRA Dashboard
-    Running at: http://127.0.0.1:{port}
-    Open this URL in your browser!
-    Press Ctrl+C to stop.
-    """)
+    print("")
+    print("    HYDRA Dashboard")
+    print("    Running at: http://127.0.0.1:" + str(port))
+    print("    Open this URL in your browser!")
+    print("    Press Ctrl+C to stop.")
+    print("")
     app.run(host="0.0.0.0", port=port, debug=False)
